@@ -17,6 +17,7 @@ factions = pd.read_pickle(FACTIONS / "factions.pkl")
 
 faction_patterns = {
     "Bündnis 90/Die Grünen": r"(?:BÜNDNIS\s*(?:90)?/?(?:\s*D[1I]E)?|Bündnis\s*90/(?:\s*D[1I]E)?)?\s*[GC]R[UÜ].?\s*[ÑN]EN?(?:/Bündnis 90)?|Bündnis 90/Die Grünen",  # noqa: E501
+    "BSW": r"BSW|Bündnis\s*Sahra\s*Wagenknecht",  # noqa: E501
     "CDU/CSU": r"(?:Gast|-)?(?:\s*C\s*[DSMU]\s*S?[DU]\s*(?:\s*[/,':!.-]?)*\s*(?:\s*C+\s*[DSs]?\s*[UÙ]?\s*)?)(?:-?Hosp\.|-Gast|1)?",  # noqa: E501
     "BP": r"^BP",
     "DA": r"^DA",
@@ -44,9 +45,13 @@ faction_patterns = {
 
 def get_faction_abbrev(faction, faction_patterns):
     """matches the given faction and returns an id"""
+    # Some <fraktion> elements in the raw XML are pretty-printed across
+    # multiple lines with indentation (e.g. "DIE\n\n    LINKE"), which
+    # would otherwise never match a single-space pattern like "DIE LINKE".
+    faction = regex.sub(r"\s+", " ", faction).strip()
 
     for faction_abbrev, faction_pattern in faction_patterns.items():
-        if regex.search(faction_pattern, faction):
+        if regex.search(faction_pattern, faction, regex.IGNORECASE):
             return faction_abbrev
     return None
 

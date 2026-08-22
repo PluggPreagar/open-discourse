@@ -24,6 +24,7 @@ CONTRIBUTIONS_EXTENDED.mkdir(parents=True, exist_ok=True)
 
 faction_patterns = {
     "Bündnis 90/Die Grünen": r"(?:BÜNDNIS\s*(?:90)?/?(?:\s*D[1I]E)?|Bündnis\s*90/(?:\s*D[1I]E)?)?\s*[GC]R[UÜ].?\s*[ÑN]EN?(?:/Bündnis 90)?",  # noqa: E501
+    "BSW": r"BSW|Bündnis\s*Sahra\s*Wagenknecht",  # noqa: E501
     "CDU/CSU": r"(?:Gast|-)?(?:\s*C\s*[DSMU]\s*S?[DU]\s*(?:\s*[/,':!.-]?)*\s*(?:\s*C+\s*[DSs]?\s*[UÙ]?\s*)?)(?:-?Hosp\.|-Gast|1)?",  # noqa: E501
     "BP": r"^BP",
     "DA": r"^DA",
@@ -115,9 +116,13 @@ def find_with_default(node, key, default):
 
 def get_faction_abbrev(faction, faction_patterns):
     """matches the given faction and returns an id"""
+    # Some <fraktion> elements in the raw XML are pretty-printed across
+    # multiple lines with indentation (e.g. "DIE\n\n    LINKE"), which
+    # would otherwise never match a single-space pattern like "DIE LINKE".
+    faction = regex.sub(r"\s+", " ", faction).strip()
 
     for faction_abbrev, faction_pattern in faction_patterns.items():
-        if regex.search(faction_pattern, faction):
+        if regex.search(faction_pattern, faction, regex.IGNORECASE):
             return faction_abbrev
     return None
 
@@ -206,8 +211,12 @@ for folder_path in sorted(ELECTORAL_TERM_19_20_INPUT.iterdir()):
                 if speaker is None:
                     continue
                 try:
-                    speaker_id = int(speaker.get("id"))
-                except (ValueError, AttributeError):
+                    # Some documents carry a second, placeholder id after a
+                    # space (e.g. "11005217 999990074") - a Bundestag-side
+                    # data quirk, confirmed present in the raw source itself.
+                    # The real id is always the first token.
+                    speaker_id = int(speaker.get("id").split()[0])
+                except (ValueError, AttributeError, IndexError):
                     speaker_id = -1
                 name = speaker.find("name")
                 first_name = find_with_default(name, "vorname", "")
@@ -221,7 +230,7 @@ for folder_path in sorted(ELECTORAL_TERM_19_20_INPUT.iterdir()):
                     else:
                         position_raw = ""
                 else:
-                    position_raw = ""
+                    position_raw = find_with_default(name, "fraktion", "")
 
                 faction_abbrev = get_faction_abbrev(
                     str(position_raw), faction_patterns=faction_patterns
@@ -307,7 +316,13 @@ for folder_path in sorted(ELECTORAL_TERM_19_20_INPUT.iterdir()):
                         speech_text = ""
                         text_position = 0
                         speaker = content.find("redner")
-                        speaker_id = int(speaker.get("id"))
+                        try:
+                            # See the comment on the other id-parsing above:
+                            # some documents carry a second, space-separated
+                            # placeholder id - the real id is the first token.
+                            speaker_id = int(speaker.get("id").split()[0])
+                        except (ValueError, AttributeError, IndexError):
+                            speaker_id = -1
                         possible_matches = politicians_electoral_term.loc[
                             politicians_electoral_term["ui"] == speaker_id
                         ]
