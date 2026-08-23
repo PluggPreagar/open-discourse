@@ -1,3 +1,0 @@
-5 eindeutige Werte
-'<name>Präsidentin Bärbel Bas:</name>'
-'<name>Vizepräsident Wolfgang Kubicki:</name>'

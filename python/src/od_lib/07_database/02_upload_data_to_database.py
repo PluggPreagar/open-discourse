@@ -10,11 +10,8 @@ UPLOAD_CHUNK_SIZE = 5000
 SCHEMA = "open_discourse"
 
 # Optional CLI args: one or more electoral_term numbers, e.g. `02_upload_data_to_database.py 19 20 21`.
-# When given, only those terms' speeches/contributions are touched (existing rows for those
-# terms are deleted and replaced, everything else in the DB is left as-is). Without args, the
-# full dataset is uploaded as before (expects an empty/freshly reset schema).
+# Only those speeches/contributions are effected (updated = deleted+inserted)
 DELTA_TERMS = [int(t) for t in sys.argv[1:]] if len(sys.argv) > 1 else None
-
 
 def upload_with_progress(df, table_name, engine, schema, chunk_size=UPLOAD_CHUNK_SIZE, label=None):
     """Uploads df to table_name in chunks, showing a progress bar."""
@@ -32,10 +29,7 @@ def upload_with_progress(df, table_name, engine, schema, chunk_size=UPLOAD_CHUNK
 
 
 def upload_by_period(df, table_name, engine, schema, periods, chunk_size=UPLOAD_CHUNK_SIZE):
-    """Like upload_with_progress, but uploads one electoral term at a time so
-    long-running full uploads (e.g. all of "speeches", 900k+ rows, over an
-    hour) show both overall and per-period progress - and so that a crash
-    makes it obvious exactly which terms already made it into the DB.
+    """Chunky version of upload_with_progress - split by term + batch.
 
     `periods` is a Series aligned with df's rows giving each row's electoral
     term (df itself may not have that column directly, e.g. contributions_*
@@ -55,18 +49,16 @@ def upload_by_period(df, table_name, engine, schema, periods, chunk_size=UPLOAD_
 
 
 def upsert_dataframe(df, table_name, engine, schema, pk_cols=("id",), chunk_size=UPLOAD_CHUNK_SIZE):
-    """Inserts df into table_name, updating any row whose primary key already
-    exists instead of failing. Used for the small reference tables
-    (electoral_terms/politicians/factions), which are never period-scoped and
-    must not be wiped wholesale in delta mode (other, untouched periods'
-    speeches still hold foreign keys into them).
+    """Insert/Update for the small reference (not period-scoped) tables
+    (electoral_terms/politicians/factions). Will keep tables in delta mode
+    (untouched periods' speeches will have foreign keys to them).
     """
     if len(df) == 0:
         return
     print(f"Upsert {table_name}...", end="", flush=True)
     # astype(object) first: on a pure-float column (e.g. electoral_terms.end_date,
     # which is NaN for the still-ongoing current term), plain .where(notnull, None)
-    # silently casts None back to NaN, since a float64 column can't hold None natively.
+    # silently casts None back to NaN (float64 can't hold None natively).
     df = df.astype(object).where(pd.notnull(df), None)
     tbl = sa_table(table_name, *[sa_column(c) for c in df.columns], schema=schema)
     records = df.to_dict(orient="records")
@@ -183,10 +175,7 @@ def check_politicians(row):
     return speaker_id
 
 
-# Reference tables are never period-scoped: other, untouched periods' speeches
-# hold foreign keys into them, so in delta mode they can't just be wiped and
-# reinserted. Upsert instead - harmless in a full run too (empty table, so
-# ON CONFLICT never triggers).
+# Upsert - non-period-scoped tables with referenced keys
 upsert_dataframe(electoral_terms, "electoral_terms", engine, SCHEMA)
 
 politicians["birth_date"] = politicians["birth_date"].apply(convert_date_politicians)
@@ -267,15 +256,13 @@ contributions_simplified = contributions_simplified.where(
     (pd.notnull(contributions_simplified)), None
 )
 
-# contributions_* don't carry electoral_term directly - derive it from the
-# speech they belong to, purely for the per-period progress reporting below.
+# for per-period progress only: derive electoral_term from speech
+# (contributions_* don't carry it)
 speech_term_by_id = speeches.set_index("id")["electoral_term"]
 
 if DELTA_TERMS is None:
-    # Full rebuild: assumes an empty/freshly reset schema, IDs are used as
-    # produced by the pipeline (0-based for WP1-18, a running counter from
-    # 1_000_000 for WP19+) - unchanged from the original behavior so already
-    # published IDs stay stable across a normal full rebuild.
+    # FULL REBUILD
+    # init id from pipeline 1:1 (0-based for WP1-18, incr 1_000_000 for WP19+)
     contributions_simplified["id"] = range(len(contributions_simplified.content))
 
     upload_by_period(speeches, "speeches", engine, SCHEMA, speeches["electoral_term"])
@@ -294,12 +281,7 @@ if DELTA_TERMS is None:
         contributions_simplified["speech_id"].map(speech_term_by_id),
     )
 else:
-    # Delta load: only touch the given terms. Every term forms one
-    # contiguous, self-contained block in the pipeline's working IDs (see
-    # ideas.md) - a contribution's speech_id always points at a speech from
-    # the same term, never across terms. That means a single additive
-    # offset per ID space is enough to rebase onto free IDs; no per-row
-    # mapping table needed.
+    # DELTA - keep terms as self-contained block, use global id offset
     print(f"Delta load for electoral term(s): {DELTA_TERMS}")
 
     delta_speeches = speeches[speeches["electoral_term"].isin(DELTA_TERMS)].copy()

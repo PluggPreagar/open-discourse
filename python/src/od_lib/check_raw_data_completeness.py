@@ -1,9 +1,5 @@
 """Checks the raw session XML downloads for gaps in the session numbering per
-electoral term, without downloading or deleting anything. Catches the class of
-bug found in 02_download_raw_data_electoral_term_19_20.py, where a pagination
-issue silently skipped every other batch of sessions - the download step
-itself reported success, and the gap was only visible by cross-checking the
-actual file numbering against what the source really has.
+electoral term, without downloading or deleting anything.
 
 Run after any download stage to confirm nothing was silently missed.
 """

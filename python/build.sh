@@ -1,10 +1,51 @@
 #!/bin/bash
 set -o pipefail
 
+show_help() {
+    cat << EOF
+Usage: $(basename "$0") [OPTIONS]
+
+Generate the OpenDiscourse database from raw Bundestag data.
+
+This script executes the complete pipeline (21 stages) to download, process,
+and upload parliamentary data into the database. The database must be running.
+
+OPTIONS:
+    --force             Clear all stage markers and re-run every stage from scratch
+                        (normally skips stages that already succeeded)
+
+    --term TERM(S)      Reprocess only the specified electoral term(s). Accepts a
+                        single term or comma-separated list (e.g., "19" or "19,20,21").
+                        Skips the DB reset and performs a delta load (replaces only
+                        these terms in the DB). Assumes the schema already exists.
+
+    -h, --help          Display this help message and exit
+
+EXAMPLES:
+    $(basename "$0")                    # Full pipeline run (all terms, ~4h)
+    $(basename "$0") --force            # Force re-run all stages from scratch
+    $(basename "$0") --term 19          # Reprocess only electoral term 19
+    $(basename "$0") --term 19,20,21    # Reprocess terms 19, 20, and 21
+
+NOTES:
+    - Stages that already completed are skipped (unless --force is used)
+    - Logs are written to logs/<stage>_log.log
+    - Stage completion markers are stored in logs/.status/
+    - A database dump is created in ../database/dumps/ after successful completion
+
+For detailed documentation, see python/src/README.md
+
+EOF
+}
+
 FORCE=0
 TERM=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
         --force)
             FORCE=1
             ;;
@@ -17,6 +58,7 @@ while [ $# -gt 0 ]; do
             ;;
         *)
             echo "Unbekanntes Argument: $1" >&2
+            echo "Use --help for usage information" >&2
             exit 1
             ;;
     esac
@@ -85,15 +127,14 @@ electoral_term_19_20_path=$src_path/05_electoral_term_19_20
 contributions_path=$src_path/06_contributions
 database_path=$src_path/07_database
 
-# Runs one pipeline stage, skipping it if it already succeeded in a
-# previous run. Stops the whole build on the first real failure instead
-# of letting downstream stages cascade into confusing unrelated errors.
-# Stage names are prefixed with their phase folder's numeric id (e.g.
-# "07_01_...") so log/marker names stay globally unique even though
-# script numbering restarts at 01 in every phase folder.
+# Staged Run:
+#   - skipped if already succeeded (unless --force)
+#   - stops on first failure (no cascading errors)
+#   - logs to logs/<stage>_<script>.log (e.g. logs/01_01_download_raw_data_01_download_raw_data.py.log)
 #
 # Optional 3rd arg: extra CLI argument passed to the script (used for
-# --term filtering). Optional 4th arg "1": ignore an existing marker and
+# --term filtering).
+# Optional 4th arg "1": --force = ignore an existing marker and
 # always re-run (used together with --term, since we deliberately want
 # to reprocess that one term even if the stage already succeeded before).
 run_stage () {
