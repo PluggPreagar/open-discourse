@@ -116,9 +116,7 @@ def find_with_default(node, key, default):
 
 def get_faction_abbrev(faction, faction_patterns):
     """matches the given faction and returns an id"""
-    # Some <fraktion> elements in the raw XML are pretty-printed across
-    # multiple lines with indentation (e.g. "DIE\n\n    LINKE"), which
-    # would otherwise never match a single-space pattern like "DIE LINKE".
+    # handle multiple lines with indentation (e.g. "DIE\n\n    LINKE")
     faction = regex.sub(r"\s+", " ", faction).strip()
 
     for faction_abbrev, faction_pattern in faction_patterns.items():
@@ -211,10 +209,7 @@ for folder_path in sorted(ELECTORAL_TERM_19_20_INPUT.iterdir()):
                 if speaker is None:
                     continue
                 try:
-                    # Some documents carry a second, placeholder id after a
-                    # space (e.g. "11005217 999990074") - a Bundestag-side
-                    # data quirk, confirmed present in the raw source itself.
-                    # The real id is always the first token.
+                    # handle non-relevant second id (e.g. "11005217 999990074")
                     speaker_id = int(speaker.get("id").split()[0])
                 except (ValueError, AttributeError, IndexError):
                     speaker_id = -1
@@ -317,9 +312,7 @@ for folder_path in sorted(ELECTORAL_TERM_19_20_INPUT.iterdir()):
                         text_position = 0
                         speaker = content.find("redner")
                         try:
-                            # See the comment on the other id-parsing above:
-                            # some documents carry a second, space-separated
-                            # placeholder id - the real id is the first token.
+                            # handle non-relevant second id (e.g. "11005217 999990074")
                             speaker_id = int(speaker.get("id").split()[0])
                         except (ValueError, AttributeError, IndexError):
                             speaker_id = -1

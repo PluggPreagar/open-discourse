@@ -45,9 +45,7 @@ faction_patterns = {
 
 def get_faction_abbrev(faction, faction_patterns):
     """matches the given faction and returns an id"""
-    # Some <fraktion> elements in the raw XML are pretty-printed across
-    # multiple lines with indentation (e.g. "DIE\n\n    LINKE"), which
-    # would otherwise never match a single-space pattern like "DIE LINKE".
+    # handle multiple lines with indentation (e.g. "DIE\n\n    LINKE")
     faction = regex.sub(r"\s+", " ", faction).strip()
 
     for faction_abbrev, faction_pattern in faction_patterns.items():

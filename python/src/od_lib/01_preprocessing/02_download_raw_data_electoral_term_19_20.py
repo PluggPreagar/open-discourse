@@ -44,10 +44,7 @@ for election_period in election_periods:
         soup = BeautifulSoup(page.text, "html.parser")
         # scrape for links
         current_links = list(soup.find_all("a", attrs={"href": regex.compile("xml$")}))
-        # The site lists every document twice (desktop/mobile markup) -
-        # dedupe by href, otherwise len(current_links) is double the real
-        # page size and "offset" (which counts real documents, not <a>
-        # tags) ends up skipping every other batch of documents entirely.
+        # doc-offset calculated from link-count (dedup desktop+mobile version!)
         seen_hrefs = {}
         for link in current_links:
             seen_hrefs.setdefault(link.get("href"), link)
@@ -71,7 +68,6 @@ for election_period in election_periods:
             continue
 
         page = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-
         with open(target_path, "w") as file:
             file.write(
                 regex.sub(
