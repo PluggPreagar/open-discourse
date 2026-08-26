@@ -14,4 +14,8 @@ CREATE TABLE open_discourse.contributions_extended (
 	CONSTRAINT contributions_extended_fk_2 FOREIGN KEY (politician_id) REFERENCES open_discourse.politicians(id)
 );
 
+-- FK-Spalten werden nicht auto-indexiert; ohne diesen Index macht jeder
+-- speeches-Delete pro Zeile einen Seq-Scan dieser Tabelle (FK-Check).
+CREATE INDEX contributions_extended_speech_id_idx ON open_discourse.contributions_extended(speech_id);
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE open_discourse.contributions_extended TO visitor;

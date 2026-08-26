@@ -8,6 +8,42 @@ yarn := "yarn --ignore-engines"
 default:
     @just --list
 
+# --- primary interface --------------------------------------------------
+
+# Bring up the backend (database + proxy) and make sure data exists.
+# Safe to re-run: a DB that already has speeches is left untouched, only an
+# empty one triggers a full pipeline run.
+init:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    docker-compose up -d database proxy
+    just db-update
+    count=$(docker exec od-database psql -U postgres -d next -tAc "SELECT count(*) FROM open_discourse.speeches" 2>/dev/null || echo 0)
+    if [ "${count:-0}" = "0" ]; then
+        echo ">> DB ist leer - starte vollen Pipeline-Lauf (~4h)..."
+        just pipeline
+    else
+        echo ">> DB enthaelt bereits $count Reden - Import uebersprungen."
+    fi
+    docker-compose up -d proxy
+
+# Reprocess/reimport only the given electoral term(s), e.g. `just update 19,20,21`.
+# Restarts the proxy afterwards (the pipeline's docker-compose down takes it out).
+update TERM:
+    just pipeline-term {{TERM}}
+    docker-compose up -d proxy
+
+# Bring up the full stack (database, proxy, frontend) and print the URL.
+serve:
+    docker-compose up -d database proxy frontend
+    @echo "Frontend: http://localhost:3000"
+
+# Full reset: wipe the DB schema, then re-initialize from scratch (runs
+# the full pipeline if that leaves the DB empty - see `init`).
+force:
+    just db-update --force
+    just init
+
 # --- docker-compose -----------------------------------------------------
 
 # Start every service in the background.
@@ -113,6 +149,7 @@ pipeline-term TERM:
 # Upload already-processed final data (python/data/03_final/*) for one or more
 # terms straight into the DB, skipping the pipeline entirely - fast path for
 # "the DB is empty/partial but the final pickles from a previous run are still there".
+# Skips terms that already match the pickles; append `--force` to delete+reinsert anyway.
 upload-term +TERMS:
     cd python && { source .venv/Scripts/activate 2>/dev/null || source .venv/bin/activate; } && export PYTHONUTF8=1 && python src/od_lib/07_database/02_upload_data_to_database.py {{TERMS}}
 

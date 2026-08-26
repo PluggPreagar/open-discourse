@@ -1,5 +1,31 @@
 # Todo
 
+## TODO-008: Full-Import abschließen + Längen-Histogramme über alle Perioden
+
+- **Status:** abgeschlossen (2026-08-26) — Full-Import verifiziert (1.005.962 Reden, 21 Wahlperioden, 0 verwaiste Contributions), Statistik-Vergleich als Artifact "Redenlängen-Analyse" geliefert. Ein Finding daraus als eigenständiges TODO-009 ausgelagert.
+- **Prio:** Hoch (aktueller Fokus)
+- **Schritt 1 — Full-Import verifizieren:**
+  - `just reimport-all` läuft (DB-Reset via `db-update --force` + Full-Rebuild-Insert aller 21 Perioden, kein Delta/kein Delete).
+  - Nach Abschluss prüfen: `speeches`/`contributions_extended`/`contributions_simplified` für alle 21 Perioden nicht-leer, Zeilenzahlen gegen die Pipeline-Pickles verifizieren (siehe Vorgehen in `logbook.md`, Abschnitt "WP1-18-Import").
+  - Falls wieder abgebrochen: NICHT per TaskStop unterbrechen, sobald `delete_rows()` läuft (Teil-Schaden, siehe Logbook); bei Full-Rebuild gibt es aber ohnehin keine Deletes.
+  - Bekannte Fallstricke, die bereits gefixt wurden: Postgres-Server-Crash bei Massen-Delete (RUM-Index), Insert-Parallelität (`ThreadPoolExecutor`) verursachte `PendingRollbackError` → wieder sequenziell; Host-Standby killt prozessgebundenen Sleep-Schutz bei jedem Skript-Absturz erneut.
+  - Danach `docker-compose up -d proxy` (Pipeline-Neustarts nehmen den Proxy immer wieder raus).
+- **Schritt 2 — Statistischer Vergleich über alle Perioden (Histogramme):**
+  - Kriterien: Speech-Länge, Contribution-Länge, **Satzlängen** (Sentence-Length) — ursprünglicher Auslöser: sehr kurzer Redebeitrag ("Frau Kollegin.", Ramelow) → Verdacht auf Schnittfehler bei der Extraktion.
+  - Bereits geklärt (siehe Logbook "Speech-Length-Check"): kurze Präsidiums-Wortmeldungen sind strukturell normal (Median 76 Zeichen bei `Presidium of Parliament` vs. 2850 bei MPs), kein Parsing-Fehler. 9 echte 0-Zeichen-Speeches gefunden (Ryglewski-Fall noch nicht tief geprüft).
+  - Satzlängen-Verteilung: SQL-seitig via `regexp_split_to_table(speech_content, '[.!?]+')` + Bucket-Aggregation pro `electoral_term`, nicht Volltext nach Python ziehen (Datenvolumen).
+  - Vergleich WP1-18 (alt) vs. WP19-21 (neu) — sind die Muster konsistent?
+  - Visualisierung: dataviz-Skill bereits geladen (Palette/Validator beachten), small multiples pro Periode, als Artifact publizieren.
+
+## TODO-009: Kurztext-Duplikate in WP20/21 (speeches)
+
+- **Status:** offen (nur Finding, keine Umsetzung)
+- **Prio:** Niedrig
+- **Beschreibung:** Beim TODO-008-Statistikvergleich gefunden: 3.242 `speeches`-Zeilen mit identischem `(politician_id, date, speech_content)` — WP20: 901 Duplikat-Gruppen / 3.180 betroffene Zeilen / 2.279 überzählig; WP21: 488 Gruppen / 1.451 Zeilen / 963 überzählig. Alle betroffenen Texte sind kurz (max. 84 Zeichen WP20, 105 Zeichen WP21) und formelhaft (z. B. „Ja.", „Danke schön.", Vereidigungsformeln wie „Ich schwöre es, so wahr mir Gott helfe."). Keine Duplikate mit substanziellem Redetext (>200 Zeichen) gefunden. Anteil verschwindend gering (0,34 % von 1.005.962 Reden), daher nicht priorisiert.
+- **Offene Frage:** Echte Mehrfach-Wortmeldung derselben Person am selben Sitzungstag (z. B. bei aufeinanderfolgenden Abstimmungen/Kurzantworten in der Fragestunde) oder ein XML-Extraktionsartefakt bei sehr kurzen Redner-Einträgen in `05_electoral_term_19_20/01_extract_speeches_and_contributions_electoral_term_19_20.py`? Nicht untersucht.
+- **Nächster Schritt (falls aufgegriffen):** Root Cause in der WP19-21-Extraktion prüfen — z. B. ob derselbe kurze `<rede>`/`<p>`-Block bei bestimmten XML-Strukturen mehrfach als eigene Rede statt korrekt zusammengeführt erfasst wird. Vergleich, ob dasselbe Muster auch in WP19 oder älteren Perioden auftritt (bisher nur für WP20/21 geprüft).
+- **Kommentare:** Aus Chat-Analyse entstanden (Statistik-Vergleich, siehe Artifact "Redenlängen-Analyse", Abschnitt 05, 2026-08-26).
+
 ## TODO-007: Namensinkonsistenz speeches vs. politicians
 
 - **Status:** offen (nur Finding, keine Umsetzung)
