@@ -93,12 +93,10 @@ fi
 cd ../database
 if [ "$TERM_FORCE" = "1" ]; then
     echo "--term: skipping full DB reset (delta load expects the schema to already exist)."
+elif [ "$FORCE" = "1" ]; then
+    yarn --ignore-engines run db:update:local --force
 else
-    if [ "$FORCE" = "1" ]; then
-        yarn --ignore-engines run db:update:local --force
-    else
-        yarn --ignore-engines run db:update:local
-    fi
+    yarn --ignore-engines run db:update:local
 fi
 cd ../python
 if [ -f .venv/bin/activate ]; then
