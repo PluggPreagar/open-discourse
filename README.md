@@ -119,7 +119,7 @@ This script is just a pipeline executing all scripts in `src`. You can also manu
 
 ```Shell
 // run from python folder
-sh build.sh
+bash build.sh
 ```
 
 ### Start the Full Text Search

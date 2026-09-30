@@ -11,4 +11,4 @@ The python service processes and creates all of the open-discourse data
 ## Commands
 
 - To setup the python environment, please run `sh setup.sh`
-- To build the open-discourse data, please run `sh build.sh`
+- To build the open-discourse data, please run `bash build.sh`

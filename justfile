@@ -140,11 +140,11 @@ frontend-format:
 
 # Full pipeline run (all 21 terms, ~4h). Add args e.g. `just pipeline --force`.
 pipeline *ARGS:
-    cd python && sh build.sh {{ARGS}}
+    cd python && bash build.sh {{ARGS}}
 
 # Reprocess/upload only the given electoral term(s), e.g. `just pipeline-term 19` or `just pipeline-term 19,20,21`.
 pipeline-term TERM:
-    cd python && sh build.sh --term {{TERM}}
+    cd python && bash build.sh --term {{TERM}}
 
 # Tail the top-level pipeline log written by build.sh. Ctrl+C to stop
 # (does not affect the running build). Pass LINES to change the backlog,

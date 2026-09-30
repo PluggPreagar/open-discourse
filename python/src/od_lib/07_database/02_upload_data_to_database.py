@@ -202,6 +202,19 @@ def delete_rows_if_needed(engine, schema, table_name, where_sql, params, needs_w
     return True
 
 
+def db_id_bounds(engine, schema, table_name, where_sql, params):
+    """min/max id actually present in the DB for this scope, for delete_rows()'s
+    id-range partitioning. Must come from the DB, not from pickle-side ids:
+    once a term's ids have been offset-rebased (see speeches_offset below),
+    the pickle's raw ids no longer bound the rows actually stored for it."""
+    with engine.connect() as conn:
+        db_min, db_max = conn.execute(
+            text(f'SELECT min(id), max(id) FROM "{schema}"."{table_name}" WHERE {where_sql}'),
+            params,
+        ).one()
+    return None if db_min is None else (db_min, db_max)
+
+
 def db_matches_pickle(engine, schema, table_name, where_sql, params, expected_ids):
     """Proxy check: count/min(id)/max(id) against the expected id set."""
     if len(expected_ids) == 0:
@@ -499,12 +512,16 @@ if DELTA_TERMS is None:
     _log_stage("Drop speeches indexes: done")
 
     _log_stage("Upload speeches: start")
-    upload_by_period(speeches, "speeches", engine, SCHEMA, speeches["electoral_term"])
-    _log_stage("Upload speeches: done")
-
-    _log_stage("Rebuild speeches indexes: start")
-    create_speech_indexes(engine, SCHEMA)
-    _log_stage("Rebuild speeches indexes: done")
+    try:
+        upload_by_period(speeches, "speeches", engine, SCHEMA, speeches["electoral_term"])
+        _log_stage("Upload speeches: done")
+    except Exception as e:
+        _log_stage(f"Upload speeches: failed ({e})")
+        raise
+    finally:
+        _log_stage("Rebuild speeches indexes: start")
+        create_speech_indexes(engine, SCHEMA)
+        _log_stage("Rebuild speeches indexes: done")
 
     _log_stage("Upload contributions_extended: start")
     upload_by_period(
@@ -588,9 +605,13 @@ else:
         simplified_deleted = delete_rows_if_needed(
             engine, SCHEMA, "contributions_simplified", speech_scope_sql, scope_params, simplified_needs_work,
         )
+        speeches_id_bounds = (
+            db_id_bounds(engine, SCHEMA, "speeches", term_filter_sql, scope_params)
+            if speeches_needs_work else None
+        )
         if delete_rows_if_needed(
             engine, SCHEMA, "speeches", term_filter_sql, scope_params,
-            speeches_needs_work, id_bounds=(min(term_ids), max(term_ids)),
+            speeches_needs_work, id_bounds=speeches_id_bounds,
         ):
             speeches_offset = next_id_start(engine, SCHEMA, "speeches") - min(term_ids)
             term_speeches["id"] += speeches_offset

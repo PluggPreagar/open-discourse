@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -o pipefail
 
 show_help() {
@@ -94,7 +94,11 @@ cd ../database
 if [ "$TERM_FORCE" = "1" ]; then
     echo "--term: skipping full DB reset (delta load expects the schema to already exist)."
 else
-    yarn --ignore-engines run db:update:local
+    if [ "$FORCE" = "1" ]; then
+        yarn --ignore-engines run db:update:local --force
+    else
+        yarn --ignore-engines run db:update:local
+    fi
 fi
 cd ../python
 if [ -f .venv/bin/activate ]; then
